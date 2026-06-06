@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import type { InventoryItem, Area, ReviewStats, ReviewStatus, ResponsibilityAttribution, DifferenceType } from '../types';
+import type { InventoryItem, Area, ReviewStats, ReviewStatus, ResponsibilityAttribution, DifferenceType, ClosingStatus } from '../types';
 
 interface ArchiveDetailProps {
   onBack: () => void;
@@ -16,6 +16,12 @@ const REVIEW_STATUS_LABELS: Record<ReviewStatus, string> = {
   pending: '待处理',
   inProgress: '复盘中',
   completed: '已完成',
+};
+
+const CLOSING_STATUS_LABELS: Record<ClosingStatus, string> = {
+  notStarted: '未开始',
+  inProgress: '处理中',
+  completed: '已闭环',
 };
 
 const RESPONSIBILITY_LABELS: Record<ResponsibilityAttribution, string> = {
@@ -62,13 +68,7 @@ export function ArchiveDetail({ onBack }: ArchiveDetailProps) {
 
   const reviewStats = useMemo((): ReviewStats | null => {
     if (!archive) return null;
-    if (archive.snapshot.reviewStats) {
-      const rs = archive.snapshot.reviewStats;
-      return {
-        ...rs,
-        unclosed: rs.unclosed !== undefined ? rs.unclosed : (rs.pending + rs.inProgress),
-      };
-    }
+    
     const items = archive.snapshot.items.filter(i => i.hasDifference || i.isOutOfStock);
     const totalDifferences = items.length;
     const pending = items.filter(i => i.reviewStatus === 'pending').length;
@@ -77,6 +77,20 @@ export function ArchiveDetail({ onBack }: ArchiveDetailProps) {
     const unclosed = pending + inProgress;
     const reviewed = inProgress + completed;
     const completionRate = totalDifferences > 0 ? Math.round((completed / totalDifferences) * 100) : 0;
+    
+    const notStarted = items.filter(i => i.closingStatus === 'notStarted').length;
+    const closingInProgress = items.filter(i => i.closingStatus === 'inProgress').length;
+    const closingCompleted = items.filter(i => i.closingStatus === 'completed').length;
+    const closingUnclosed = notStarted + closingInProgress;
+    const closingRate = totalDifferences > 0 ? Math.round((closingCompleted / totalDifferences) * 100) : 0;
+    
+    const today = new Date().toISOString().split('T')[0];
+    const overdue = items.filter(i => 
+      i.closingStatus !== 'completed' && 
+      i.expectedClosingDate && 
+      i.expectedClosingDate < today
+    ).length;
+
     return {
       totalDifferences,
       reviewed,
@@ -85,6 +99,15 @@ export function ArchiveDetail({ onBack }: ArchiveDetailProps) {
       completed,
       unclosed,
       completionRate,
+      closingStats: {
+        totalExceptions: totalDifferences,
+        notStarted,
+        inProgress: closingInProgress,
+        completed: closingCompleted,
+        unclosed: closingUnclosed,
+        closingRate,
+        overdue,
+      },
     };
   }, [archive]);
 
@@ -304,7 +327,7 @@ export function ArchiveDetail({ onBack }: ArchiveDetailProps) {
 
             {reviewStats && reviewStats.totalDifferences > 0 && (
               <div className="review-summary-card">
-                <h3 className="section-subtitle">📋 差异复盘完成情况</h3>
+                <h3 className="section-subtitle">📋 差异复盘与闭环完成情况</h3>
                 <div className="stats-grid" style={{ marginTop: 16, gridTemplateColumns: 'repeat(5, 1fr)' }}>
                   <div className="stat-card-large stat-warning">
                     <div className="stat-card-icon">📊</div>
@@ -316,8 +339,8 @@ export function ArchiveDetail({ onBack }: ArchiveDetailProps) {
                   <div className="stat-card-large stat-danger">
                     <div className="stat-card-icon">⏳</div>
                     <div className="stat-card-info">
-                      <span className="stat-card-num">{reviewStats.unclosed}</span>
-                      <span className="stat-card-label">未闭环</span>
+                      <span className="stat-card-num">{reviewStats.pending}</span>
+                      <span className="stat-card-label">待复盘</span>
                     </div>
                   </div>
                   <div className="stat-card-large">
@@ -331,14 +354,14 @@ export function ArchiveDetail({ onBack }: ArchiveDetailProps) {
                     <div className="stat-card-icon">✅</div>
                     <div className="stat-card-info">
                       <span className="stat-card-num">{reviewStats.completed}</span>
-                      <span className="stat-card-label">已完成</span>
+                      <span className="stat-card-label">复盘完成</span>
                     </div>
                   </div>
                   <div className="stat-card-large">
                     <div className="stat-card-icon">📈</div>
                     <div className="stat-card-info">
                       <span className="stat-card-num">{reviewStats.completionRate}%</span>
-                      <span className="stat-card-label">完成率</span>
+                      <span className="stat-card-label">复盘率</span>
                     </div>
                   </div>
                 </div>
@@ -351,6 +374,56 @@ export function ArchiveDetail({ onBack }: ArchiveDetailProps) {
                     复盘完成率 {reviewStats.completionRate}%
                   </span>
                 </div>
+
+                {reviewStats.closingStats && (
+                  <>
+                    <h4 className="section-subtitle" style={{ marginTop: 24, fontSize: 16 }}>🔍 异常闭环情况</h4>
+                    <div className="stats-grid" style={{ marginTop: 12, gridTemplateColumns: 'repeat(4, 1fr)' }}>
+                      <div className="stat-card-large stat-danger">
+                        <div className="stat-card-icon">⏳</div>
+                        <div className="stat-card-info">
+                          <span className="stat-card-num">{reviewStats.closingStats.notStarted}</span>
+                          <span className="stat-card-label">未开始处理</span>
+                        </div>
+                      </div>
+                      <div className="stat-card-large" style={{ borderTop: '3px solid var(--primary)' }}>
+                        <div className="stat-card-icon">🔄</div>
+                        <div className="stat-card-info">
+                          <span className="stat-card-num">{reviewStats.closingStats.inProgress}</span>
+                          <span className="stat-card-label">处理中</span>
+                        </div>
+                      </div>
+                      <div className="stat-card-large stat-success">
+                        <div className="stat-card-icon">✅</div>
+                        <div className="stat-card-info">
+                          <span className="stat-card-num">{reviewStats.closingStats.completed}</span>
+                          <span className="stat-card-label">已闭环</span>
+                        </div>
+                      </div>
+                      <div className="stat-card-large">
+                        <div className="stat-card-icon">📈</div>
+                        <div className="stat-card-info">
+                          <span className="stat-card-num">{reviewStats.closingStats.closingRate}%</span>
+                          <span className="stat-card-label">闭环率</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="review-progress-bar">
+                      <div
+                        className="review-progress-fill success"
+                        style={{ width: `${reviewStats.closingStats.closingRate}%` }}
+                      />
+                      <span className="review-progress-text">
+                        异常闭环率 {reviewStats.closingStats.closingRate}%
+                      </span>
+                    </div>
+                    {reviewStats.closingStats.overdue > 0 && (
+                      <div style={{ marginTop: 12, color: 'var(--danger)', fontSize: 14 }}>
+                        ⏰ 已逾期：{reviewStats.closingStats.overdue} 项
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -560,12 +633,17 @@ export function ArchiveDetail({ onBack }: ArchiveDetailProps) {
                 )}
 
                 <div className="section-subtitle" style={{ marginTop: 24 }}>
-                  📋 复盘明细
+                  📋 复盘与闭环明细
                 </div>
                 <div className="exception-list">
                   {exceptionItems.map((item) => {
                     const diff = getDiff(item);
                     const diffType = getDifferenceType(item);
+                    const isOverdue = (it: InventoryItem) => {
+                      if (it.closingStatus === 'completed' || !it.expectedClosingDate) return false;
+                      const today = new Date().toISOString().split('T')[0];
+                      return it.expectedClosingDate < today;
+                    };
                     return (
                       <div
                         key={item.id}
@@ -591,6 +669,18 @@ export function ArchiveDetail({ onBack }: ArchiveDetailProps) {
                               }`}
                             >
                               {REVIEW_STATUS_LABELS[item.reviewStatus]}
+                            </span>
+                            <span
+                              className={`status-badge ${
+                                item.closingStatus === 'completed'
+                                  ? 'confirmed'
+                                  : item.closingStatus === 'inProgress'
+                                  ? 'pending'
+                                  : 'out-of-stock'
+                              }`}
+                            >
+                              {CLOSING_STATUS_LABELS[item.closingStatus as ClosingStatus]}
+                              {isOverdue(item) && ' ⏰'}
                             </span>
                           </div>
                           <div className="exception-qtys">
@@ -630,7 +720,26 @@ export function ArchiveDetail({ onBack }: ArchiveDetailProps) {
                             {RESPONSIBILITY_LABELS[item.responsibilityAttribution]}
                           </div>
                         )}
-                        {!item.reviewConclusion && !item.handlingOpinion && !item.responsibilityAttribution && (
+                        {item.closingProgress && (
+                          <div className="exception-note">
+                            <span className="note-label">处理进度：</span>
+                            {item.closingProgress}
+                          </div>
+                        )}
+                        {item.expectedClosingDate && (
+                          <div className="exception-note">
+                            <span className="note-label">预计完成时间：</span>
+                            {item.expectedClosingDate}
+                            {isOverdue(item) && <span style={{ color: 'var(--danger)', marginLeft: 8 }}>已逾期</span>}
+                          </div>
+                        )}
+                        {item.finalResult && (
+                          <div className="exception-note">
+                            <span className="note-label">最终处理结果：</span>
+                            {item.finalResult}
+                          </div>
+                        )}
+                        {!item.reviewConclusion && !item.handlingOpinion && !item.responsibilityAttribution && !item.closingProgress && !item.finalResult && (
                           <div className="exception-note">
                             <span className="note-label text-muted">暂无复盘信息</span>
                           </div>

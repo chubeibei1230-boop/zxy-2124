@@ -1,4 +1,4 @@
-import type { ShortcutConfig, FilterCondition, HistoryState, Role, ArchiveFilter, ArchiveView } from '../types';
+import type { ShortcutConfig, FilterCondition, HistoryState, Role, ArchiveFilter, ArchiveView, ManagerView } from '../types';
 
 export const DEFAULT_SHORTCUTS: ShortcutConfig = {
   moveUp: 'ArrowUp',
@@ -43,6 +43,8 @@ export const DEFAULT_ARCHIVE_FILTER: ArchiveFilter = {
 
 export const DEFAULT_ARCHIVE_VIEW: ArchiveView = 'list';
 
+export const DEFAULT_MANAGER_VIEW: ManagerView = 'areas';
+
 export const STORAGE_KEYS = {
   AREAS: 'inventory_areas',
   ITEMS: 'inventory_items',
@@ -55,4 +57,5 @@ export const STORAGE_KEYS = {
   ARCHIVE_FILTER: 'inventory_archive_filter',
   CURRENT_ARCHIVE_ID: 'inventory_current_archive_id',
   ARCHIVE_VIEW: 'inventory_archive_view',
+  MANAGER_VIEW: 'inventory_manager_view',
 };

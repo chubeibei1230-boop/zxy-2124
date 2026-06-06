@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { generateId } from '../utils/helpers';
-import type { InventoryItem } from '../types';
+import type { InventoryItem, ManagerView } from '../types';
+import { ExceptionClosingManager } from './ExceptionClosingManager';
 
 export function AreaManager() {
-  const { state, dispatch } = useApp();
+  const { state, setManagerView, dispatch } = useApp();
   const [newAreaName, setNewAreaName] = useState('');
   const [newItem, setNewItem] = useState({
     sku: '',
@@ -12,6 +13,11 @@ export function AreaManager() {
     areaId: state.areas[0]?.id || '',
     expectedQty: 0,
   });
+
+  const tabs: { key: ManagerView; label: string; icon: string }[] = [
+    { key: 'areas', label: '区域与商品管理', icon: '🗂️' },
+    { key: 'closing', label: '异常闭环跟踪', icon: '🔍' },
+  ];
 
   const handleAddArea = () => {
     if (!newAreaName.trim()) return;
@@ -51,6 +57,11 @@ export function AreaManager() {
       responsibilityAttribution: '',
       reviewStatus: 'pending',
       reviewedAt: null,
+      closingProgress: '',
+      expectedClosingDate: '',
+      finalResult: '',
+      closingStatus: 'notStarted',
+      closedAt: null,
     };
     dispatch({ type: 'ADD_ITEM', payload: item });
     setNewItem({ sku: '', name: '', areaId: state.areas[0]?.id || '', expectedQty: 0 });
@@ -74,8 +85,24 @@ export function AreaManager() {
     dispatch({ type: 'SET_ITEMS', payload: resetItems });
   };
 
+  if (state.managerView === 'closing') {
+    return <ExceptionClosingManager />;
+  }
+
   return (
     <div className="area-manager">
+      <div className="manager-tabs">
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            className={`tab-btn ${state.managerView === tab.key ? 'active' : ''}`}
+            onClick={() => setManagerView(tab.key)}
+          >
+            {tab.icon} {tab.label}
+          </button>
+        ))}
+      </div>
+
       <div className="section">
         <h2 className="section-title">🗂️ 盘点区域管理</h2>
         <div className="area-list">

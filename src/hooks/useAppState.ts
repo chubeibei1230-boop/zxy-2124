@@ -1,5 +1,5 @@
 import { useReducer, useEffect, useCallback, useMemo } from 'react';
-import type { AppState, HistoryAction, InventoryItem, Area, Archive, ArchiveSnapshot } from '../types';
+import type { AppState, HistoryAction, InventoryItem, Area, Archive, ArchiveSnapshot, ClosingStats } from '../types';
 import { appReducer, createHistoryAction } from '../store/reducer';
 import {
   DEFAULT_SHORTCUTS,
@@ -9,6 +9,7 @@ import {
   STORAGE_KEYS,
   DEFAULT_ARCHIVE_FILTER,
   DEFAULT_ARCHIVE_VIEW,
+  DEFAULT_MANAGER_VIEW,
 } from '../constants/defaultConfig';
 import { loadFromStorage, saveToStorage } from '../utils/storage';
 import { createMockAreas, createMockItems } from '../utils/mockData';
@@ -36,6 +37,11 @@ function initializeState(): AppState {
       responsibilityAttribution: (item as InventoryItem).responsibilityAttribution ?? '',
       reviewStatus: (item as InventoryItem).reviewStatus ?? 'pending',
       reviewedAt: (item as InventoryItem).reviewedAt ?? null,
+      closingProgress: (item as InventoryItem).closingProgress ?? '',
+      expectedClosingDate: (item as InventoryItem).expectedClosingDate ?? '',
+      finalResult: (item as InventoryItem).finalResult ?? '',
+      closingStatus: (item as InventoryItem).closingStatus ?? 'notStarted',
+      closedAt: (item as InventoryItem).closedAt ?? null,
     }));
   }
 
@@ -51,6 +57,7 @@ function initializeState(): AppState {
     archiveFilter: loadFromStorage(STORAGE_KEYS.ARCHIVE_FILTER, DEFAULT_ARCHIVE_FILTER),
     currentArchiveId: loadFromStorage<string | null>(STORAGE_KEYS.CURRENT_ARCHIVE_ID, null),
     archiveView: loadFromStorage(STORAGE_KEYS.ARCHIVE_VIEW, DEFAULT_ARCHIVE_VIEW),
+    managerView: loadFromStorage(STORAGE_KEYS.MANAGER_VIEW, DEFAULT_MANAGER_VIEW),
   };
 }
 
@@ -100,6 +107,10 @@ export function useAppState() {
   useEffect(() => {
     saveToStorage(STORAGE_KEYS.ARCHIVE_VIEW, state.archiveView);
   }, [state.archiveView]);
+
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.MANAGER_VIEW, state.managerView);
+  }, [state.managerView]);
 
   const pushHistory = useCallback((actions: HistoryAction[]) => {
     const newPast = [...state.history.past, actions];
@@ -242,6 +253,33 @@ export function useAppState() {
     [state.items, state.filter, state.areas]
   );
 
+  const getClosingStats = useCallback((): ClosingStats => {
+    const exceptionItems = state.items.filter(i => i.hasDifference || i.isOutOfStock);
+    const totalExceptions = exceptionItems.length;
+    const notStarted = exceptionItems.filter(i => i.closingStatus === 'notStarted').length;
+    const inProgress = exceptionItems.filter(i => i.closingStatus === 'inProgress').length;
+    const completed = exceptionItems.filter(i => i.closingStatus === 'completed').length;
+    const unclosed = notStarted + inProgress;
+    const closingRate = totalExceptions > 0 ? Math.round((completed / totalExceptions) * 100) : 0;
+    
+    const today = new Date().toISOString().split('T')[0];
+    const overdue = exceptionItems.filter(i => 
+      i.closingStatus !== 'completed' && 
+      i.expectedClosingDate && 
+      i.expectedClosingDate < today
+    ).length;
+
+    return {
+      totalExceptions,
+      notStarted,
+      inProgress,
+      completed,
+      unclosed,
+      closingRate,
+      overdue,
+    };
+  }, [state.items]);
+
   const getReviewStats = useCallback(() => {
     const differenceItems = state.items.filter(i => i.hasDifference || i.isOutOfStock);
     const totalDifferences = differenceItems.length;
@@ -251,6 +289,7 @@ export function useAppState() {
     const unclosed = pending + inProgress;
     const reviewed = inProgress + completed;
     const completionRate = totalDifferences > 0 ? Math.round((completed / totalDifferences) * 100) : 0;
+    const closingStats = getClosingStats();
 
     return {
       totalDifferences,
@@ -260,8 +299,9 @@ export function useAppState() {
       completed,
       unclosed,
       completionRate,
+      closingStats,
     };
-  }, [state.items]);
+  }, [state.items, getClosingStats]);
 
   const generateReviewSummary = useCallback(() => {
     const differenceItems = state.items.filter(i => i.hasDifference || i.isOutOfStock);
@@ -322,6 +362,35 @@ export function useAppState() {
       });
     }
 
+    summary += `\n四、异常闭环情况\n`;
+    summary += `已闭环 ${stats.closingStats.completed} 项，未闭环 ${stats.closingStats.unclosed} 项，闭环率 ${stats.closingStats.closingRate}%。\n`;
+    summary += `其中：未开始处理 ${stats.closingStats.notStarted} 项，处理中 ${stats.closingStats.inProgress} 项，已闭环 ${stats.closingStats.completed} 项。`;
+    if (stats.closingStats.overdue > 0) {
+      summary += ` 已逾期 ${stats.closingStats.overdue} 项。`;
+    }
+    summary += `\n`;
+
+    const closingAreaStats = new Map<string, { total: number; completed: number }>();
+    state.areas.forEach(area => {
+      closingAreaStats.set(area.id, { total: 0, completed: 0 });
+    });
+    differenceItems.forEach(item => {
+      const stat = closingAreaStats.get(item.areaId);
+      if (stat) {
+        stat.total++;
+        if (item.closingStatus === 'completed') stat.completed++;
+      }
+    });
+
+    summary += `\n各区域闭环情况：\n`;
+    closingAreaStats.forEach((stat, areaId) => {
+      if (stat.total > 0) {
+        const areaName = state.areas.find(a => a.id === areaId)?.name || '未知区域';
+        const rate = stat.total > 0 ? Math.round((stat.completed / stat.total) * 100) : 0;
+        summary += `- ${areaName}：闭环 ${stat.completed}/${stat.total}（${rate}%）\n`;
+      }
+    });
+
     return summary;
   }, [state.items, state.areas, getReviewStats]);
 
@@ -337,6 +406,32 @@ export function useAppState() {
         itemId,
         ...reviewData,
       },
+    });
+  }, []);
+
+  const setClosingData = useCallback((itemId: string, closingData: {
+    closingProgress: string;
+    expectedClosingDate: string;
+    finalResult: string;
+    closingStatus: string;
+  }) => {
+    dispatch({
+      type: 'SET_CLOSING_DATA',
+      payload: {
+        itemId,
+        ...closingData,
+      },
+    });
+  }, []);
+
+  const setManagerView = useCallback((view: AppState['managerView']) => {
+    dispatch({ type: 'SET_MANAGER_VIEW', payload: view });
+  }, []);
+
+  const updateArchiveItemClosing = useCallback((archiveId: string, itemId: string, closingData: any) => {
+    dispatch({
+      type: 'UPDATE_ARCHIVE_ITEM_CLOSING',
+      payload: { archiveId, itemId, closingData },
     });
   }, []);
 
@@ -465,6 +560,10 @@ export function useAppState() {
     getReviewStats,
     generateReviewSummary,
     updateArchiveReviewSummary,
+    setClosingData,
+    getClosingStats,
+    setManagerView,
+    updateArchiveItemClosing,
   };
 }
 

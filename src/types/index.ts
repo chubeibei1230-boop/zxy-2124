@@ -8,6 +8,8 @@ export type DifferenceType = 'overage' | 'shortage' | 'outOfStock' | 'noDifferen
 
 export type ReviewStatus = 'pending' | 'inProgress' | 'completed';
 
+export type ClosingStatus = 'notStarted' | 'inProgress' | 'completed';
+
 export type ResponsibilityAttribution = 'operator' | 'system' | 'supplier' | 'other' | '';
 
 export interface InventoryItem {
@@ -27,6 +29,11 @@ export interface InventoryItem {
   responsibilityAttribution: ResponsibilityAttribution;
   reviewStatus: ReviewStatus;
   reviewedAt: number | null;
+  closingProgress: string;
+  expectedClosingDate: string;
+  finalResult: string;
+  closingStatus: ClosingStatus;
+  closedAt: number | null;
 }
 
 export type ActionType = 
@@ -79,6 +86,16 @@ export interface FilterCondition {
 
 export type Role = 'manager' | 'operator' | 'reviewer';
 
+export interface ClosingStats {
+  totalExceptions: number;
+  notStarted: number;
+  inProgress: number;
+  completed: number;
+  unclosed: number;
+  closingRate: number;
+  overdue: number;
+}
+
 export interface ReviewStats {
   totalDifferences: number;
   reviewed: number;
@@ -87,6 +104,7 @@ export interface ReviewStats {
   completed: number;
   unclosed: number;
   completionRate: number;
+  closingStats: ClosingStats;
 }
 
 export interface ArchiveSnapshot {
@@ -122,6 +140,8 @@ export interface ArchiveFilter {
 
 export type ArchiveView = 'list' | 'detail';
 
+export type ManagerView = 'areas' | 'closing';
+
 export interface AppState {
   areas: Area[];
   items: InventoryItem[];
@@ -134,4 +154,5 @@ export interface AppState {
   archiveFilter: ArchiveFilter;
   currentArchiveId: string | null;
   archiveView: ArchiveView;
+  managerView: ManagerView;
 }

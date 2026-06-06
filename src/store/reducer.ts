@@ -31,7 +31,10 @@ export type Action =
   | { type: 'RESTORE_FROM_ARCHIVE'; payload: { areas: Area[]; items: InventoryItem[] } }
   | { type: 'SET_REVIEW_DATA'; payload: { itemId: string; reviewConclusion: string; handlingOpinion: string; responsibilityAttribution: string; reviewStatus: string } }
   | { type: 'SET_REVIEW_SUMMARY'; payload: { archiveId: string; reviewSummary: string } }
-  | { type: 'UPDATE_ARCHIVE_REVIEW_SUMMARY'; payload: { archiveId: string; reviewSummary: string; reviewStats: any } };
+  | { type: 'UPDATE_ARCHIVE_REVIEW_SUMMARY'; payload: { archiveId: string; reviewSummary: string; reviewStats: any } }
+  | { type: 'SET_CLOSING_DATA'; payload: { itemId: string; closingProgress: string; expectedClosingDate: string; finalResult: string; closingStatus: string } }
+  | { type: 'SET_MANAGER_VIEW'; payload: AppState['managerView'] }
+  | { type: 'UPDATE_ARCHIVE_ITEM_CLOSING'; payload: { archiveId: string; itemId: string; closingData: any } };
 
 export function appReducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -220,6 +223,11 @@ export function appReducer(state: AppState, action: Action): AppState {
         responsibilityAttribution: '' as const,
         reviewStatus: 'pending' as const,
         reviewedAt: null,
+        closingProgress: '',
+        expectedClosingDate: '',
+        finalResult: '',
+        closingStatus: 'notStarted' as const,
+        closedAt: null,
       }));
 
       return {
@@ -257,6 +265,48 @@ export function appReducer(state: AppState, action: Action): AppState {
             ...archive.snapshot,
             reviewSummary,
             reviewStats,
+          },
+        };
+      });
+      return { ...state, archives };
+    }
+
+    case 'SET_CLOSING_DATA': {
+      const { itemId, closingProgress, expectedClosingDate, finalResult, closingStatus } = action.payload;
+      const items = state.items.map(item => {
+        if (item.id !== itemId) return item;
+        return {
+          ...item,
+          closingProgress,
+          expectedClosingDate,
+          finalResult,
+          closingStatus: closingStatus as any,
+          closedAt: closingStatus === 'completed' ? Date.now() : item.closedAt,
+        };
+      });
+      return { ...state, items };
+    }
+
+    case 'SET_MANAGER_VIEW':
+      return { ...state, managerView: action.payload };
+
+    case 'UPDATE_ARCHIVE_ITEM_CLOSING': {
+      const { archiveId, itemId, closingData } = action.payload;
+      const archives = state.archives.map(archive => {
+        if (archive.id !== archiveId) return archive;
+        const items = archive.snapshot.items.map(item => {
+          if (item.id !== itemId) return item;
+          return {
+            ...item,
+            ...closingData,
+            closedAt: closingData.closingStatus === 'completed' ? Date.now() : item.closedAt,
+          };
+        });
+        return {
+          ...archive,
+          snapshot: {
+            ...archive.snapshot,
+            items,
           },
         };
       });

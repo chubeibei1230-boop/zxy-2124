@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import type { DifferenceType, ReviewStatus, ResponsibilityAttribution, InventoryItem } from '../types';
+import type { DifferenceType, ReviewStatus, ResponsibilityAttribution, InventoryItem, ClosingStatus } from '../types';
 
 const DIFFERENCE_TYPE_LABELS: Record<DifferenceType, string> = {
   overage: '盘盈',
@@ -13,6 +13,12 @@ const REVIEW_STATUS_LABELS: Record<ReviewStatus, string> = {
   pending: '待处理',
   inProgress: '复盘中',
   completed: '已完成',
+};
+
+const CLOSING_STATUS_LABELS: Record<ClosingStatus, string> = {
+  notStarted: '未开始',
+  inProgress: '处理中',
+  completed: '已闭环',
 };
 
 const RESPONSIBILITY_LABELS: Record<ResponsibilityAttribution, string> = {
@@ -31,18 +37,26 @@ function getDifferenceType(item: InventoryItem): DifferenceType {
 }
 
 export function ReviewPanel() {
-  const { state, setReviewData, getReviewStats, generateReviewSummary, confirmItem, batchConfirm } = useApp();
+  const { state, setReviewData, setClosingData, getReviewStats, generateReviewSummary, confirmItem, batchConfirm } = useApp();
   const [filterAreaId, setFilterAreaId] = useState<string>('');
   const [filterDiffType, setFilterDiffType] = useState<string>('');
   const [filterReviewStatus, setFilterReviewStatus] = useState<string>('');
+  const [filterClosingStatus, setFilterClosingStatus] = useState<string>('');
   const [filterConfirmStatus, setFilterConfirmStatus] = useState<string>('');
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editingClosingItemId, setEditingClosingItemId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({
     reviewConclusion: '',
     handlingOpinion: '',
     responsibilityAttribution: '' as ResponsibilityAttribution,
     reviewStatus: 'pending' as ReviewStatus,
+  });
+  const [closingEditForm, setClosingEditForm] = useState({
+    closingProgress: '',
+    expectedClosingDate: '',
+    finalResult: '',
+    closingStatus: 'notStarted' as ClosingStatus,
   });
 
   const reviewStats = useMemo(() => getReviewStats(), [getReviewStats]);
@@ -62,13 +76,16 @@ export function ReviewPanel() {
     if (filterReviewStatus) {
       items = items.filter(i => i.reviewStatus === filterReviewStatus);
     }
+    if (filterClosingStatus) {
+      items = items.filter(i => i.closingStatus === filterClosingStatus);
+    }
     if (filterConfirmStatus === 'confirmed') {
       items = items.filter(i => i.isConfirmed);
     } else if (filterConfirmStatus === 'unconfirmed') {
       items = items.filter(i => !i.isConfirmed);
     }
     return items;
-  }, [exceptionItems, filterAreaId, filterDiffType, filterReviewStatus, filterConfirmStatus]);
+  }, [exceptionItems, filterAreaId, filterDiffType, filterReviewStatus, filterClosingStatus, filterConfirmStatus]);
 
   const unconfirmedExceptions = useMemo(() => {
     return exceptionItems.filter(i => !i.isConfirmed);
@@ -119,6 +136,34 @@ export function ReviewPanel() {
     setEditingItemId(null);
   };
 
+  const handleEditClosing = (item: InventoryItem) => {
+    setEditingClosingItemId(item.id);
+    setClosingEditForm({
+      closingProgress: item.closingProgress,
+      expectedClosingDate: item.expectedClosingDate,
+      finalResult: item.finalResult,
+      closingStatus: item.closingStatus,
+    });
+  };
+
+  const handleSaveClosing = () => {
+    if (!editingClosingItemId) return;
+    
+    if (closingEditForm.closingStatus === 'completed') {
+      if (!closingEditForm.finalResult.trim()) {
+        alert('请填写最终处理结果');
+        return;
+      }
+    }
+    
+    setClosingData(editingClosingItemId, closingEditForm);
+    setEditingClosingItemId(null);
+  };
+
+  const handleCancelClosing = () => {
+    setEditingClosingItemId(null);
+  };
+
   const handleConfirmAll = () => {
     const ids = unconfirmedExceptions.map(i => i.id);
     if (ids.length === 0) return;
@@ -152,6 +197,21 @@ export function ReviewPanel() {
     }
   };
 
+  const getClosingStatusBadgeClass = (status: ClosingStatus) => {
+    switch (status) {
+      case 'completed': return 'status-badge confirmed';
+      case 'inProgress': return 'status-badge pending';
+      case 'notStarted': return 'status-badge out-of-stock';
+      default: return 'status-badge';
+    }
+  };
+
+  const isOverdue = (item: InventoryItem) => {
+    if (item.closingStatus === 'completed' || !item.expectedClosingDate) return false;
+    const today = new Date().toISOString().split('T')[0];
+    return item.expectedClosingDate < today;
+  };
+
   return (
     <div className="review-panel">
       <div className="review-header">
@@ -170,11 +230,19 @@ export function ReviewPanel() {
           </div>
           <div className="stat-card stat-success">
             <span className="stat-card-value">{reviewStats.completed}</span>
-            <span className="stat-card-label">已完成</span>
+            <span className="stat-card-label">复盘完成</span>
+          </div>
+          <div className="stat-card" style={{ borderTop: '3px solid var(--primary)' }}>
+            <span className="stat-card-value">{reviewStats.closingStats.unclosed}</span>
+            <span className="stat-card-label">未闭环</span>
+          </div>
+          <div className="stat-card stat-success">
+            <span className="stat-card-value">{reviewStats.closingStats.completed}</span>
+            <span className="stat-card-label">已闭环</span>
           </div>
           <div className="stat-card">
-            <span className="stat-card-value">{reviewStats.completionRate}%</span>
-            <span className="stat-card-label">完成率</span>
+            <span className="stat-card-value">{reviewStats.closingStats.closingRate}%</span>
+            <span className="stat-card-label">闭环率</span>
           </div>
         </div>
         <div className="review-actions">
@@ -237,6 +305,19 @@ export function ReviewPanel() {
           </select>
         </div>
         <div className="filter-group">
+          <label className="filter-label">闭环状态：</label>
+          <select
+            className="form-input"
+            value={filterClosingStatus}
+            onChange={(e) => setFilterClosingStatus(e.target.value)}
+          >
+            <option value="">全部状态</option>
+            <option value="notStarted">未开始</option>
+            <option value="inProgress">处理中</option>
+            <option value="completed">已闭环</option>
+          </select>
+        </div>
+        <div className="filter-group">
           <label className="filter-label">确认状态：</label>
           <select
             className="form-input"
@@ -277,6 +358,10 @@ export function ReviewPanel() {
                     </span>
                     <span className={getStatusBadgeClass(item.reviewStatus)}>
                       {REVIEW_STATUS_LABELS[item.reviewStatus]}
+                    </span>
+                    <span className={getClosingStatusBadgeClass(item.closingStatus)}>
+                      {CLOSING_STATUS_LABELS[item.closingStatus]}
+                      {isOverdue(item) && ' ⚠️'}
                     </span>
                   </div>
                   <div className="exception-qtys">
@@ -323,6 +408,25 @@ export function ReviewPanel() {
                         {RESPONSIBILITY_LABELS[item.responsibilityAttribution]}
                       </div>
                     )}
+                    {item.closingProgress && (
+                      <div className="exception-note">
+                        <span className="note-label">处理进度：</span>
+                        {item.closingProgress}
+                      </div>
+                    )}
+                    {item.expectedClosingDate && (
+                      <div className="exception-note">
+                        <span className="note-label">预计完成时间：</span>
+                        {item.expectedClosingDate}
+                        {isOverdue(item) && <span style={{ color: 'var(--danger)', marginLeft: 8 }}>已逾期</span>}
+                      </div>
+                    )}
+                    {item.finalResult && (
+                      <div className="exception-note">
+                        <span className="note-label">最终处理结果：</span>
+                        {item.finalResult}
+                      </div>
+                    )}
                     <div className="exception-actions">
                       {!item.isConfirmed ? (
                         <button
@@ -339,6 +443,13 @@ export function ReviewPanel() {
                         onClick={() => handleEdit(item)}
                       >
                         {item.reviewStatus === 'pending' ? '开始复盘' : '编辑复盘'}
+                      </button>
+                      <button
+                        className="btn btn-sm"
+                        style={{ backgroundColor: 'var(--primary)', color: 'white' }}
+                        onClick={() => handleEditClosing(item)}
+                      >
+                        {item.closingStatus === 'notStarted' ? '登记闭环' : '编辑闭环'}
                       </button>
                     </div>
                   </>
@@ -422,6 +533,73 @@ export function ReviewPanel() {
                         取消
                       </button>
                       <button className="btn btn-primary" onClick={handleSave}>
+                        保存
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {editingClosingItemId === item.id && (
+                  <div className="review-form">
+                    <div className="form-row">
+                      <div className="form-group">
+                        <label className="form-label">闭环状态 <span style={{ color: 'var(--danger)' }}>*</span></label>
+                        <select
+                          className="form-input"
+                          value={closingEditForm.closingStatus}
+                          onChange={(e) => setClosingEditForm({ ...closingEditForm, closingStatus: e.target.value as ClosingStatus })}
+                        >
+                          <option value="notStarted">未开始</option>
+                          <option value="inProgress">处理中</option>
+                          <option value="completed">已闭环</option>
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">预计完成时间</label>
+                        <input
+                          type="date"
+                          className="form-input"
+                          value={closingEditForm.expectedClosingDate}
+                          onChange={(e) => setClosingEditForm({ ...closingEditForm, expectedClosingDate: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">处理进度</label>
+                      <textarea
+                        className="form-input"
+                        rows={2}
+                        placeholder="请输入当前处理进度..."
+                        value={closingEditForm.closingProgress}
+                        onChange={(e) => setClosingEditForm({ ...closingEditForm, closingProgress: e.target.value })}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">
+                        最终处理结果
+                        {closingEditForm.closingStatus === 'completed' && <span style={{ color: 'var(--danger)' }}> *</span>}
+                      </label>
+                      <textarea
+                        className="form-input"
+                        rows={2}
+                        placeholder="请输入最终处理结果..."
+                        value={closingEditForm.finalResult}
+                        onChange={(e) => setClosingEditForm({ ...closingEditForm, finalResult: e.target.value })}
+                        style={{
+                          borderColor: closingEditForm.closingStatus === 'completed' && !closingEditForm.finalResult.trim() ? 'var(--danger)' : undefined
+                        }}
+                      />
+                    </div>
+                    {closingEditForm.closingStatus === 'completed' && (
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                        <span style={{ color: 'var(--danger)' }}>*</span> 标记为"已闭环"时，最终处理结果必须填写
+                      </div>
+                    )}
+                    <div className="form-actions">
+                      <button className="btn btn-ghost" onClick={handleCancelClosing}>
+                        取消
+                      </button>
+                      <button className="btn btn-primary" onClick={handleSaveClosing}>
                         保存
                       </button>
                     </div>

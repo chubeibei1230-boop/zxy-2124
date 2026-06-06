@@ -53,6 +53,11 @@ export function createMockItems(areas: Area[]): InventoryItem[] {
       responsibilityAttribution: '',
       reviewStatus: 'pending',
       reviewedAt: null,
+      closingProgress: '',
+      expectedClosingDate: '',
+      finalResult: '',
+      closingStatus: 'notStarted',
+      closedAt: null,
     });
   });
 
