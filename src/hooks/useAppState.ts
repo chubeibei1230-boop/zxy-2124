@@ -25,6 +25,11 @@ function initializeState(): AppState {
     items = mockItems;
     saveToStorage(STORAGE_KEYS.AREAS, areas);
     saveToStorage(STORAGE_KEYS.ITEMS, items);
+  } else {
+    items = items.map(item => ({
+      ...item,
+      prevQty: (item as InventoryItem).prevQty ?? null,
+    }));
   }
 
   return {
@@ -109,31 +114,39 @@ export function useAppState() {
   const setQuantity = useCallback((itemId: string, qty: number | null) => {
     const item = state.items.find(i => i.id === itemId);
     if (!item) return;
+    if (item.isConfirmed) return;
     if (item.actualQty === qty) return;
 
     dispatch({ type: 'SET_QUANTITY', payload: { itemId, qty } });
     pushHistory([
-      createHistoryAction('SET_QUANTITY', itemId, item.actualQty, qty),
+      createHistoryAction('SET_QUANTITY', itemId, { value: item.actualQty }, { value: qty }),
     ]);
   }, [state.items, pushHistory]);
 
   const setNote = useCallback((itemId: string, note: string) => {
     const item = state.items.find(i => i.id === itemId);
     if (!item || item.note === note) return;
+    if (item.isConfirmed) return;
 
     dispatch({ type: 'SET_NOTE', payload: { itemId, note } });
     pushHistory([
-      createHistoryAction('SET_NOTE', itemId, item.note, note),
+      createHistoryAction('SET_NOTE', itemId, { value: item.note }, { value: note }),
     ]);
   }, [state.items, pushHistory]);
 
   const toggleOutOfStock = useCallback((itemId: string) => {
     const item = state.items.find(i => i.id === itemId);
     if (!item) return;
+    if (item.isConfirmed) return;
 
     dispatch({ type: 'TOGGLE_OUT_OF_STOCK', payload: { itemId } });
     pushHistory([
-      createHistoryAction('TOGGLE_OUT_OF_STOCK', itemId, item.isOutOfStock, !item.isOutOfStock),
+      createHistoryAction(
+        'TOGGLE_OUT_OF_STOCK',
+        itemId,
+        { value: item.isOutOfStock, prevQty: item.prevQty },
+        { value: !item.isOutOfStock, prevQty: item.actualQty }
+      ),
     ]);
   }, [state.items, pushHistory]);
 
@@ -143,14 +156,14 @@ export function useAppState() {
 
     dispatch({ type: 'CONFIRM_ITEM', payload: { itemId } });
     pushHistory([
-      createHistoryAction('CONFIRM_ITEM', itemId, false, true),
+      createHistoryAction('CONFIRM_ITEM', itemId, { value: false }, { value: true }),
     ]);
   }, [state.items, pushHistory]);
 
   const batchConfirm = useCallback((itemIds: string[]) => {
     const toConfirm = itemIds.filter(id => {
       const item = state.items.find(i => i.id === id);
-      return item && !item.isConfirmed;
+      return item && !item.isConfirmed && (item.hasDifference || item.isOutOfStock);
     });
     if (toConfirm.length === 0) return;
 

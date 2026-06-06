@@ -47,6 +47,7 @@ export function createMockItems(areas: Area[]): InventoryItem[] {
       isOutOfStock: false,
       isConfirmed: false,
       hasDifference: false,
+      prevQty: null,
     });
   });
 

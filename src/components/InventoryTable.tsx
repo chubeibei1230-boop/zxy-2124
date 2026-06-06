@@ -25,7 +25,7 @@ export function InventoryTable() {
   const handleQuickQty = useCallback((digit: number) => {
     if (!state.selectedItemId) return;
     const item = state.items.find(i => i.id === state.selectedItemId);
-    if (!item) return;
+    if (!item || item.isConfirmed) return;
 
     let newQty: number;
     if (item.actualQty === null || item.actualQty === 0) {
@@ -124,7 +124,7 @@ export function InventoryTable() {
                   placeholder="-"
                   onClick={(e) => e.stopPropagation()}
                   onChange={(e) => handleQtyChange(item.id, e.target.value)}
-                  disabled={item.isOutOfStock}
+                  disabled={item.isOutOfStock || item.isConfirmed}
                 />
               </td>
               <td className="status-cell">
@@ -136,7 +136,11 @@ export function InventoryTable() {
                 )}
               </td>
               <td className="note-cell">
-                {editingNoteId === item.id ? (
+                {item.isConfirmed ? (
+                  <span className="note-text">
+                    {item.note || <span className="note-placeholder">已确认</span>}
+                  </span>
+                ) : editingNoteId === item.id ? (
                   <input
                     type="text"
                     className="note-input"
@@ -168,6 +172,7 @@ export function InventoryTable() {
                     e.stopPropagation();
                     toggleOutOfStock(item.id);
                   }}
+                  disabled={item.isConfirmed}
                 >
                   {item.isOutOfStock ? '取消缺货' : '缺货'}
                 </button>
@@ -179,7 +184,7 @@ export function InventoryTable() {
                   }}
                   disabled={item.isConfirmed}
                 >
-                  确认
+                  {item.isConfirmed ? '已确认' : '确认'}
                 </button>
               </td>
             </tr>

@@ -15,6 +15,7 @@ export interface InventoryItem {
   isOutOfStock: boolean;
   isConfirmed: boolean;
   hasDifference: boolean;
+  prevQty: number | null;
 }
 
 export type ActionType = 

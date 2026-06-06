@@ -45,6 +45,7 @@ export function AreaManager() {
       isOutOfStock: false,
       isConfirmed: false,
       hasDifference: false,
+      prevQty: null,
     };
     dispatch({ type: 'ADD_ITEM', payload: item });
     setNewItem({ sku: '', name: '', areaId: state.areas[0]?.id || '', expectedQty: 0 });
@@ -63,6 +64,7 @@ export function AreaManager() {
       isOutOfStock: false,
       isConfirmed: false,
       hasDifference: false,
+      prevQty: null,
     }));
     dispatch({ type: 'SET_ITEMS', payload: resetItems });
   };

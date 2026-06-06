@@ -1,7 +1,7 @@
 import type { AppState, InventoryItem, HistoryAction, ActionType } from '../types';
 
 function computeDifference(item: InventoryItem): boolean {
-  if (item.isOutOfStock) return item.expectedQty !== 0;
+  if (item.isOutOfStock) return true;
   if (item.actualQty === null) return false;
   return item.actualQty !== item.expectedQty;
 }
@@ -34,7 +34,8 @@ export function appReducer(state: AppState, action: Action): AppState {
       const { itemId, qty } = action.payload;
       const items = state.items.map(item => {
         if (item.id !== itemId) return item;
-        const updated = { ...item, actualQty: qty, isOutOfStock: false };
+        if (item.isConfirmed) return item;
+        const updated = { ...item, actualQty: qty, isOutOfStock: false, prevQty: null };
         updated.hasDifference = computeDifference(updated);
         return updated;
       });
@@ -43,9 +44,11 @@ export function appReducer(state: AppState, action: Action): AppState {
 
     case 'SET_NOTE': {
       const { itemId, note } = action.payload;
-      const items = state.items.map(item =>
-        item.id === itemId ? { ...item, note } : item
-      );
+      const items = state.items.map(item => {
+        if (item.id !== itemId) return item;
+        if (item.isConfirmed) return item;
+        return { ...item, note };
+      });
       return { ...state, items };
     }
 
@@ -53,8 +56,16 @@ export function appReducer(state: AppState, action: Action): AppState {
       const { itemId } = action.payload;
       const items = state.items.map(item => {
         if (item.id !== itemId) return item;
-        const updated = { ...item, isOutOfStock: !item.isOutOfStock };
-        if (updated.isOutOfStock) updated.actualQty = 0;
+        if (item.isConfirmed) return item;
+        const newIsOutOfStock = !item.isOutOfStock;
+        const updated = { ...item, isOutOfStock: newIsOutOfStock };
+        if (newIsOutOfStock) {
+          updated.prevQty = item.actualQty;
+          updated.actualQty = 0;
+        } else {
+          updated.actualQty = item.prevQty;
+          updated.prevQty = null;
+        }
         updated.hasDifference = computeDifference(updated);
         return updated;
       });
@@ -87,24 +98,32 @@ export function appReducer(state: AppState, action: Action): AppState {
           );
         } else {
           const id = h.itemId as string;
+          const data = h.prevValue as { value: unknown; prevQty?: number | null };
           items = items.map(item => {
             if (item.id !== id) return item;
             switch (h.type) {
               case 'SET_QUANTITY': {
-                const updated = { ...item, actualQty: h.prevValue as number | null };
+                const updated = { ...item, actualQty: data.value as number | null, prevQty: null };
                 updated.hasDifference = computeDifference(updated);
                 return updated;
               }
               case 'SET_NOTE':
-                return { ...item, note: h.prevValue as string };
+                return { ...item, note: data.value as string };
               case 'TOGGLE_OUT_OF_STOCK': {
-                const updated = { ...item, isOutOfStock: h.prevValue as boolean };
-                if (updated.isOutOfStock) updated.actualQty = 0;
+                const newIsOutOfStock = data.value as boolean;
+                const updated = { ...item, isOutOfStock: newIsOutOfStock };
+                if (newIsOutOfStock) {
+                  updated.prevQty = item.actualQty;
+                  updated.actualQty = 0;
+                } else {
+                  updated.actualQty = data.prevQty ?? null;
+                  updated.prevQty = null;
+                }
                 updated.hasDifference = computeDifference(updated);
                 return updated;
               }
               case 'CONFIRM_ITEM':
-                return { ...item, isConfirmed: h.prevValue as boolean };
+                return { ...item, isConfirmed: data.value as boolean };
               default:
                 return item;
             }
