@@ -13,7 +13,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export function ArchiveDetail({ onBack }: ArchiveDetailProps) {
-  const { currentArchive, restoreFromArchive } = useApp();
+  const { currentArchive, state, restoreFromArchive } = useApp();
   const [activeTab, setActiveTab] = useState<'overview' | 'items' | 'exceptions'>('overview');
   const [filterAreaId, setFilterAreaId] = useState<string>('');
 
@@ -62,13 +62,18 @@ export function ArchiveDetail({ onBack }: ArchiveDetailProps) {
 
   const handleRestore = () => {
     if (!archive) return;
+    const hasProgress = state.items.some(i => i.actualQty !== null || i.isOutOfStock);
+    let warning = '';
+    if (hasProgress) {
+      warning = '\n\n⚠️ 警告：当前正在进行的盘点任务有录入数据，恢复后将全部丢失，无法恢复！';
+    }
     if (
       confirm(
-        `确定要将「${archive.taskName}」恢复为新的盘点任务吗？\n\n这将创建一个全新的任务，不会影响原归档记录。`
+        `确定要将「${archive.taskName}」恢复为新的盘点任务吗？\n\n恢复后将使用该归档的区域和商品数据创建新的盘点任务，所有盘点进度将重置。${warning}`
       )
     ) {
       restoreFromArchive(archive);
-      alert('恢复成功！已创建新的盘点任务，您可以切换到其他角色开始盘点。');
+      alert('恢复成功！已基于归档创建新的盘点任务。');
       onBack();
     }
   };
