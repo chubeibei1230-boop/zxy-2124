@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 
 interface CreateArchiveModalProps {
@@ -6,7 +6,8 @@ interface CreateArchiveModalProps {
 }
 
 export function CreateArchiveModal({ onClose }: CreateArchiveModalProps) {
-  const { createArchive, stats } = useApp();
+  const { createArchive, stats, getReviewStats } = useApp();
+  const reviewStats = useMemo(() => getReviewStats(), [getReviewStats]);
   const [formData, setFormData] = useState({
     taskName: '',
     inventoryDate: new Date().toISOString().split('T')[0],
@@ -38,6 +39,13 @@ export function CreateArchiveModal({ onClose }: CreateArchiveModalProps) {
           <div className="alert alert-warning">
             ⚠️ 当前盘点尚未全部完成，仍有 {stats.total - stats.counted} 个商品未盘点。
             建议完成全部盘点后再进行归档。
+          </div>
+        )}
+
+        {reviewStats.totalDifferences > 0 && reviewStats.pending > 0 && (
+          <div className="alert alert-warning">
+            ⚠️ 本次盘点共有 {reviewStats.totalDifferences} 项差异，其中 {reviewStats.pending} 项尚未复盘。
+            建议完成所有差异复盘后再进行归档。
           </div>
         )}
 
@@ -114,6 +122,29 @@ export function CreateArchiveModal({ onClose }: CreateArchiveModalProps) {
                 <span className="preview-stat-value stat-success">{stats.confirmed}</span>
               </div>
             </div>
+            {reviewStats.totalDifferences > 0 && (
+              <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+                <h4 style={{ marginBottom: 12 }}>差异复盘情况</h4>
+                <div className="preview-stats">
+                  <div className="preview-stat">
+                    <span className="preview-stat-label">总差异</span>
+                    <span className="preview-stat-value stat-warning">{reviewStats.totalDifferences}</span>
+                  </div>
+                  <div className="preview-stat">
+                    <span className="preview-stat-label">未闭环</span>
+                    <span className="preview-stat-value stat-danger">{reviewStats.pending}</span>
+                  </div>
+                  <div className="preview-stat">
+                    <span className="preview-stat-label">已完成</span>
+                    <span className="preview-stat-value stat-success">{reviewStats.completed}</span>
+                  </div>
+                  <div className="preview-stat">
+                    <span className="preview-stat-label">完成率</span>
+                    <span className="preview-stat-value">{reviewStats.completionRate}%</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="modal-actions">

@@ -28,7 +28,10 @@ export type Action =
   | { type: 'SET_ARCHIVE_FILTER'; payload: Partial<ArchiveFilter> }
   | { type: 'SET_CURRENT_ARCHIVE_ID'; payload: string | null }
   | { type: 'SET_ARCHIVE_VIEW'; payload: ArchiveView }
-  | { type: 'RESTORE_FROM_ARCHIVE'; payload: { areas: Area[]; items: InventoryItem[] } };
+  | { type: 'RESTORE_FROM_ARCHIVE'; payload: { areas: Area[]; items: InventoryItem[] } }
+  | { type: 'SET_REVIEW_DATA'; payload: { itemId: string; reviewConclusion: string; handlingOpinion: string; responsibilityAttribution: string; reviewStatus: string } }
+  | { type: 'SET_REVIEW_SUMMARY'; payload: { archiveId: string; reviewSummary: string } }
+  | { type: 'UPDATE_ARCHIVE_REVIEW_SUMMARY'; payload: { archiveId: string; reviewSummary: string; reviewStats: any } };
 
 export function appReducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -212,6 +215,11 @@ export function appReducer(state: AppState, action: Action): AppState {
         isConfirmed: false,
         hasDifference: false,
         prevQty: null,
+        reviewConclusion: '',
+        handlingOpinion: '',
+        responsibilityAttribution: '' as const,
+        reviewStatus: 'pending' as const,
+        reviewedAt: null,
       }));
 
       return {
@@ -221,6 +229,38 @@ export function appReducer(state: AppState, action: Action): AppState {
         selectedItemId: newItems[0]?.id || null,
         history: { past: [], future: [] },
       };
+    }
+
+    case 'SET_REVIEW_DATA': {
+      const { itemId, reviewConclusion, handlingOpinion, responsibilityAttribution, reviewStatus } = action.payload;
+      const items = state.items.map(item => {
+        if (item.id !== itemId) return item;
+        return {
+          ...item,
+          reviewConclusion,
+          handlingOpinion,
+          responsibilityAttribution: responsibilityAttribution as any,
+          reviewStatus: reviewStatus as any,
+          reviewedAt: reviewStatus === 'completed' ? Date.now() : item.reviewedAt,
+        };
+      });
+      return { ...state, items };
+    }
+
+    case 'UPDATE_ARCHIVE_REVIEW_SUMMARY': {
+      const { archiveId, reviewSummary, reviewStats } = action.payload;
+      const archives = state.archives.map(archive => {
+        if (archive.id !== archiveId) return archive;
+        return {
+          ...archive,
+          snapshot: {
+            ...archive.snapshot,
+            reviewSummary,
+            reviewStats,
+          },
+        };
+      });
+      return { ...state, archives };
     }
 
     default:

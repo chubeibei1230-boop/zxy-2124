@@ -46,6 +46,11 @@ export function AreaManager() {
       isConfirmed: false,
       hasDifference: false,
       prevQty: null,
+      reviewConclusion: '',
+      handlingOpinion: '',
+      responsibilityAttribution: '',
+      reviewStatus: 'pending',
+      reviewedAt: null,
     };
     dispatch({ type: 'ADD_ITEM', payload: item });
     setNewItem({ sku: '', name: '', areaId: state.areas[0]?.id || '', expectedQty: 0 });

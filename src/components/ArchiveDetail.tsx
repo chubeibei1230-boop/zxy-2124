@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import type { InventoryItem, Area } from '../types';
+import type { InventoryItem, Area, ReviewStats, ReviewStatus, ResponsibilityAttribution, DifferenceType } from '../types';
 
 interface ArchiveDetailProps {
   onBack: () => void;
@@ -12,9 +12,37 @@ const ROLE_LABELS: Record<string, string> = {
   reviewer: '复核人员',
 };
 
+const REVIEW_STATUS_LABELS: Record<ReviewStatus, string> = {
+  pending: '待处理',
+  inProgress: '复盘中',
+  completed: '已完成',
+};
+
+const RESPONSIBILITY_LABELS: Record<ResponsibilityAttribution, string> = {
+  operator: '录入人员',
+  system: '系统问题',
+  supplier: '供应商问题',
+  other: '其他',
+  '': '未归因',
+};
+
+const DIFFERENCE_TYPE_LABELS: Record<DifferenceType, string> = {
+  overage: '盘盈',
+  shortage: '盘亏',
+  outOfStock: '缺货',
+  noDifference: '无差异',
+};
+
+function getDifferenceType(item: InventoryItem): DifferenceType {
+  if (item.isOutOfStock) return 'outOfStock';
+  if (!item.hasDifference) return 'noDifference';
+  const diff = (item.actualQty ?? 0) - item.expectedQty;
+  return diff > 0 ? 'overage' : 'shortage';
+}
+
 export function ArchiveDetail({ onBack }: ArchiveDetailProps) {
   const { currentArchive, state, restoreFromArchive } = useApp();
-  const [activeTab, setActiveTab] = useState<'overview' | 'items' | 'exceptions'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'items' | 'exceptions' | 'review'>('overview');
   const [filterAreaId, setFilterAreaId] = useState<string>('');
 
   const archive = currentArchive;
@@ -31,6 +59,28 @@ export function ArchiveDetail({ onBack }: ArchiveDetailProps) {
   const unconfirmedExceptions = useMemo(() => {
     return exceptionItems.filter((i) => !i.isConfirmed);
   }, [exceptionItems]);
+
+  const reviewStats = useMemo((): ReviewStats | null => {
+    if (!archive) return null;
+    if (archive.snapshot.reviewStats) {
+      return archive.snapshot.reviewStats;
+    }
+    const items = archive.snapshot.items.filter(i => i.hasDifference || i.isOutOfStock);
+    const totalDifferences = items.length;
+    const reviewed = items.filter(i => i.reviewStatus !== 'pending').length;
+    const pending = items.filter(i => i.reviewStatus === 'pending').length;
+    const inProgress = items.filter(i => i.reviewStatus === 'inProgress').length;
+    const completed = items.filter(i => i.reviewStatus === 'completed').length;
+    const completionRate = totalDifferences > 0 ? Math.round((completed / totalDifferences) * 100) : 0;
+    return {
+      totalDifferences,
+      reviewed,
+      pending,
+      inProgress,
+      completed,
+      completionRate,
+    };
+  }, [archive]);
 
   const filteredItems = useMemo(() => {
     if (!archive) return [];
@@ -156,6 +206,12 @@ export function ArchiveDetail({ onBack }: ArchiveDetailProps) {
         >
           ⚠️ 异常记录 ({exceptionItems.length})
         </button>
+        <button
+          className={`tab-btn ${activeTab === 'review' ? 'active' : ''}`}
+          onClick={() => setActiveTab('review')}
+        >
+          📋 差异复盘 ({reviewStats?.totalDifferences || 0})
+        </button>
       </div>
 
       <div className="detail-content">
@@ -239,6 +295,58 @@ export function ArchiveDetail({ onBack }: ArchiveDetailProps) {
                 })}
               </div>
             </div>
+
+            {reviewStats && reviewStats.totalDifferences > 0 && (
+              <div className="review-summary-card">
+                <h3 className="section-subtitle">📋 差异复盘完成情况</h3>
+                <div className="stats-grid" style={{ marginTop: 16, gridTemplateColumns: 'repeat(5, 1fr)' }}>
+                  <div className="stat-card-large stat-warning">
+                    <div className="stat-card-icon">📊</div>
+                    <div className="stat-card-info">
+                      <span className="stat-card-num">{reviewStats.totalDifferences}</span>
+                      <span className="stat-card-label">总差异数</span>
+                    </div>
+                  </div>
+                  <div className="stat-card-large stat-danger">
+                    <div className="stat-card-icon">⏳</div>
+                    <div className="stat-card-info">
+                      <span className="stat-card-num">{reviewStats.pending}</span>
+                      <span className="stat-card-label">未闭环</span>
+                    </div>
+                  </div>
+                  <div className="stat-card-large">
+                    <div className="stat-card-icon">🔄</div>
+                    <div className="stat-card-info">
+                      <span className="stat-card-num">{reviewStats.inProgress}</span>
+                      <span className="stat-card-label">复盘中</span>
+                    </div>
+                  </div>
+                  <div className="stat-card-large stat-success">
+                    <div className="stat-card-icon">✅</div>
+                    <div className="stat-card-info">
+                      <span className="stat-card-num">{reviewStats.completed}</span>
+                      <span className="stat-card-label">已完成</span>
+                    </div>
+                  </div>
+                  <div className="stat-card-large">
+                    <div className="stat-card-icon">📈</div>
+                    <div className="stat-card-info">
+                      <span className="stat-card-num">{reviewStats.completionRate}%</span>
+                      <span className="stat-card-label">完成率</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="review-progress-bar">
+                  <div
+                    className="review-progress-fill"
+                    style={{ width: `${reviewStats.completionRate}%` }}
+                  />
+                  <span className="review-progress-text">
+                    复盘完成率 {reviewStats.completionRate}%
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -347,6 +455,7 @@ export function ArchiveDetail({ onBack }: ArchiveDetailProps) {
               <div className="exception-list">
                 {exceptionItems.map((item) => {
                   const diff = getDiff(item);
+                  const diffType = getDifferenceType(item);
                   return (
                     <div
                       key={item.id}
@@ -358,6 +467,9 @@ export function ArchiveDetail({ onBack }: ArchiveDetailProps) {
                           <span className="exception-name">{item.name}</span>
                           <span className="exception-area">
                             {getAreaName(item.areaId, archive.snapshot.areas)}
+                          </span>
+                          <span className="status-badge diff">
+                            {DIFFERENCE_TYPE_LABELS[diffType]}
                           </span>
                         </div>
                         <div className="exception-qtys">
@@ -394,6 +506,137 @@ export function ArchiveDetail({ onBack }: ArchiveDetailProps) {
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'review' && (
+          <div className="review-section">
+            {reviewStats && reviewStats.totalDifferences > 0 ? (
+              <>
+                <div className="exception-stats-bar">
+                  <div className="exception-stat">
+                    <span className="exception-stat-value">{reviewStats.totalDifferences}</span>
+                    <span className="exception-stat-label">总差异数</span>
+                  </div>
+                  <div className="exception-stat">
+                    <span className="exception-stat-value stat-danger">
+                      {reviewStats.pending}
+                    </span>
+                    <span className="exception-stat-label">未闭环</span>
+                  </div>
+                  <div className="exception-stat">
+                    <span className="exception-stat-value" style={{ color: 'var(--primary)' }}>
+                      {reviewStats.inProgress}
+                    </span>
+                    <span className="exception-stat-label">复盘中</span>
+                  </div>
+                  <div className="exception-stat">
+                    <span className="exception-stat-value stat-success">
+                      {reviewStats.completed}
+                    </span>
+                    <span className="exception-stat-label">已完成</span>
+                  </div>
+                  <div className="exception-stat">
+                    <span className="exception-stat-value">{reviewStats.completionRate}%</span>
+                    <span className="exception-stat-label">完成率</span>
+                  </div>
+                </div>
+
+                {archive.snapshot.reviewSummary && (
+                  <div className="review-summary-card">
+                    <h4>📄 复盘摘要</h4>
+                    <div className="review-summary-content">
+                      {archive.snapshot.reviewSummary}
+                    </div>
+                  </div>
+                )}
+
+                <div className="section-subtitle" style={{ marginTop: 24 }}>
+                  📋 复盘明细
+                </div>
+                <div className="exception-list">
+                  {exceptionItems.map((item) => {
+                    const diff = getDiff(item);
+                    const diffType = getDifferenceType(item);
+                    return (
+                      <div
+                        key={item.id}
+                        className={`exception-card ${item.reviewStatus === 'completed' ? 'confirmed' : ''}`}
+                      >
+                        <div className="exception-main">
+                          <div className="exception-info">
+                            <span className="exception-sku">{item.sku}</span>
+                            <span className="exception-name">{item.name}</span>
+                            <span className="exception-area">
+                              {getAreaName(item.areaId, archive.snapshot.areas)}
+                            </span>
+                            <span className="status-badge diff">
+                              {DIFFERENCE_TYPE_LABELS[diffType]}
+                            </span>
+                            <span
+                              className={`status-badge ${
+                                item.reviewStatus === 'completed'
+                                  ? 'confirmed'
+                                  : item.reviewStatus === 'inProgress'
+                                  ? 'pending'
+                                  : 'out-of-stock'
+                              }`}
+                            >
+                              {REVIEW_STATUS_LABELS[item.reviewStatus]}
+                            </span>
+                          </div>
+                          <div className="exception-qtys">
+                            <div className="qty-block">
+                              <span className="qty-label">账面</span>
+                              <span className="qty-value">{item.expectedQty}</span>
+                            </div>
+                            <div className="qty-arrow">→</div>
+                            <div className="qty-block">
+                              <span className="qty-label">实盘</span>
+                              <span className="qty-value">
+                                {item.isOutOfStock ? '缺货' : item.actualQty}
+                              </span>
+                            </div>
+                            <div className={`qty-diff ${diff > 0 ? 'plus' : 'minus'}`}>
+                              {diff > 0 ? '+' : ''}
+                              {diff}
+                            </div>
+                          </div>
+                        </div>
+
+                        {item.reviewConclusion && (
+                          <div className="exception-note">
+                            <span className="note-label">复核结论：</span>
+                            {item.reviewConclusion}
+                          </div>
+                        )}
+                        {item.handlingOpinion && (
+                          <div className="exception-note">
+                            <span className="note-label">处理意见：</span>
+                            {item.handlingOpinion}
+                          </div>
+                        )}
+                        {item.responsibilityAttribution && (
+                          <div className="exception-note">
+                            <span className="note-label">责任归因：</span>
+                            {RESPONSIBILITY_LABELS[item.responsibilityAttribution]}
+                          </div>
+                        )}
+                        {!item.reviewConclusion && !item.handlingOpinion && !item.responsibilityAttribution && (
+                          <div className="exception-note">
+                            <span className="note-label text-muted">暂无复盘信息</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <div className="empty-state">
+                <p>✅ 暂无差异，无需复盘</p>
               </div>
             )}
           </div>

@@ -31,6 +31,11 @@ function initializeState(): AppState {
     items = items.map(item => ({
       ...item,
       prevQty: (item as InventoryItem).prevQty ?? null,
+      reviewConclusion: (item as InventoryItem).reviewConclusion ?? '',
+      handlingOpinion: (item as InventoryItem).handlingOpinion ?? '',
+      responsibilityAttribution: (item as InventoryItem).responsibilityAttribution ?? '',
+      reviewStatus: (item as InventoryItem).reviewStatus ?? 'pending',
+      reviewedAt: (item as InventoryItem).reviewedAt ?? null,
     }));
   }
 
@@ -237,6 +242,113 @@ export function useAppState() {
     [state.items, state.filter, state.areas]
   );
 
+  const getReviewStats = useCallback(() => {
+    const differenceItems = state.items.filter(i => i.hasDifference || i.isOutOfStock);
+    const totalDifferences = differenceItems.length;
+    const reviewed = differenceItems.filter(i => i.reviewStatus !== 'pending').length;
+    const pending = differenceItems.filter(i => i.reviewStatus === 'pending').length;
+    const inProgress = differenceItems.filter(i => i.reviewStatus === 'inProgress').length;
+    const completed = differenceItems.filter(i => i.reviewStatus === 'completed').length;
+    const completionRate = totalDifferences > 0 ? Math.round((completed / totalDifferences) * 100) : 0;
+
+    return {
+      totalDifferences,
+      reviewed,
+      pending,
+      inProgress,
+      completed,
+      completionRate,
+    };
+  }, [state.items]);
+
+  const generateReviewSummary = useCallback(() => {
+    const differenceItems = state.items.filter(i => i.hasDifference || i.isOutOfStock);
+    const stats = getReviewStats();
+    
+    const areaStats = new Map<string, { total: number; completed: number; overage: number; shortage: number; outOfStock: number }>();
+    
+    state.areas.forEach(area => {
+      areaStats.set(area.id, { total: 0, completed: 0, overage: 0, shortage: 0, outOfStock: 0 });
+    });
+
+    differenceItems.forEach(item => {
+      const areaStat = areaStats.get(item.areaId);
+      if (areaStat) {
+        areaStat.total++;
+        if (item.reviewStatus === 'completed') areaStat.completed++;
+        if (item.isOutOfStock) {
+          areaStat.outOfStock++;
+        } else {
+          const diff = (item.actualQty ?? 0) - item.expectedQty;
+          if (diff > 0) areaStat.overage++;
+          else if (diff < 0) areaStat.shortage++;
+        }
+      }
+    });
+
+    let summary = `【盘点差异复盘摘要】\n\n`;
+    summary += `一、总体情况\n`;
+    summary += `本次盘点共发现差异 ${stats.totalDifferences} 项，已完成复盘 ${stats.completed} 项，复盘完成率 ${stats.completionRate}%。\n`;
+    summary += `其中：待处理 ${stats.pending} 项，复盘中 ${stats.inProgress} 项，已完成 ${stats.completed} 项。\n\n`;
+    
+    summary += `二、分区域情况\n`;
+    areaStats.forEach((stat, areaId) => {
+      if (stat.total > 0) {
+        const areaName = state.areas.find(a => a.id === areaId)?.name || '未知区域';
+        const rate = stat.total > 0 ? Math.round((stat.completed / stat.total) * 100) : 0;
+        summary += `- ${areaName}：差异 ${stat.total} 项，盘盈 ${stat.overage} 项，盘亏 ${stat.shortage} 项，缺货 ${stat.outOfStock} 项，复盘完成率 ${rate}%\n`;
+      }
+    });
+
+    const responsibilityStats = new Map<string, number>();
+    differenceItems.forEach(item => {
+      if (item.responsibilityAttribution) {
+        responsibilityStats.set(item.responsibilityAttribution, (responsibilityStats.get(item.responsibilityAttribution) || 0) + 1);
+      }
+    });
+
+    if (responsibilityStats.size > 0) {
+      summary += `\n三、责任归因分布\n`;
+      const responsibilityLabels: Record<string, string> = {
+        operator: '录入人员',
+        system: '系统问题',
+        supplier: '供应商问题',
+        other: '其他',
+      };
+      responsibilityStats.forEach((count, key) => {
+        summary += `- ${responsibilityLabels[key] || key}：${count} 项\n`;
+      });
+    }
+
+    return summary;
+  }, [state.items, state.areas, getReviewStats]);
+
+  const setReviewData = useCallback((itemId: string, reviewData: {
+    reviewConclusion: string;
+    handlingOpinion: string;
+    responsibilityAttribution: string;
+    reviewStatus: string;
+  }) => {
+    dispatch({
+      type: 'SET_REVIEW_DATA',
+      payload: {
+        itemId,
+        ...reviewData,
+      },
+    });
+  }, []);
+
+  const updateArchiveReviewSummary = useCallback((archiveId: string, reviewSummary: string, reviewStats: any) => {
+    dispatch({
+      type: 'UPDATE_ARCHIVE_REVIEW_SUMMARY',
+      payload: {
+        archiveId,
+        reviewSummary,
+        reviewStats,
+      },
+    });
+  }, []);
+
   const createArchive = useCallback((data: {
     taskName: string;
     inventoryDate: string;
@@ -251,10 +363,15 @@ export function useAppState() {
       outOfStock: state.items.filter(i => i.isOutOfStock).length,
     };
 
+    const reviewStats = getReviewStats();
+    const reviewSummary = generateReviewSummary();
+
     const snapshot: ArchiveSnapshot = {
       areas: JSON.parse(JSON.stringify(state.areas)),
       items: JSON.parse(JSON.stringify(state.items)),
       stats: snapshotStats,
+      reviewStats,
+      reviewSummary,
     };
 
     dispatch({
@@ -265,7 +382,7 @@ export function useAppState() {
         createdBy: state.currentRole,
       },
     });
-  }, [state.items, state.areas, state.currentRole]);
+  }, [state.items, state.areas, state.currentRole, getReviewStats, generateReviewSummary]);
 
   const deleteArchive = useCallback((archiveId: string) => {
     dispatch({ type: 'DELETE_ARCHIVE', payload: archiveId });
@@ -342,6 +459,10 @@ export function useAppState() {
     restoreFromArchive,
     currentArchive,
     filteredArchives,
+    setReviewData,
+    getReviewStats,
+    generateReviewSummary,
+    updateArchiveReviewSummary,
   };
 }
 

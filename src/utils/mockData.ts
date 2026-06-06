@@ -48,6 +48,11 @@ export function createMockItems(areas: Area[]): InventoryItem[] {
       isConfirmed: false,
       hasDifference: false,
       prevQty: null,
+      reviewConclusion: '',
+      handlingOpinion: '',
+      responsibilityAttribution: '',
+      reviewStatus: 'pending',
+      reviewedAt: null,
     });
   });
 

@@ -4,6 +4,12 @@ export interface Area {
   createdAt: number;
 }
 
+export type DifferenceType = 'overage' | 'shortage' | 'outOfStock' | 'noDifference';
+
+export type ReviewStatus = 'pending' | 'inProgress' | 'completed';
+
+export type ResponsibilityAttribution = 'operator' | 'system' | 'supplier' | 'other' | '';
+
 export interface InventoryItem {
   id: string;
   sku: string;
@@ -16,6 +22,11 @@ export interface InventoryItem {
   isConfirmed: boolean;
   hasDifference: boolean;
   prevQty: number | null;
+  reviewConclusion: string;
+  handlingOpinion: string;
+  responsibilityAttribution: ResponsibilityAttribution;
+  reviewStatus: ReviewStatus;
+  reviewedAt: number | null;
 }
 
 export type ActionType = 
@@ -68,6 +79,15 @@ export interface FilterCondition {
 
 export type Role = 'manager' | 'operator' | 'reviewer';
 
+export interface ReviewStats {
+  totalDifferences: number;
+  reviewed: number;
+  pending: number;
+  inProgress: number;
+  completed: number;
+  completionRate: number;
+}
+
 export interface ArchiveSnapshot {
   areas: Area[];
   items: InventoryItem[];
@@ -78,6 +98,8 @@ export interface ArchiveSnapshot {
     confirmed: number;
     outOfStock: number;
   };
+  reviewStats: ReviewStats;
+  reviewSummary: string;
 }
 
 export interface Archive {
