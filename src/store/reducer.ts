@@ -1,4 +1,5 @@
-import type { AppState, InventoryItem, HistoryAction, ActionType } from '../types';
+import type { AppState, InventoryItem, HistoryAction, ActionType, Archive, ArchiveFilter, ArchiveView, Area } from '../types';
+import { generateId } from '../utils/helpers';
 
 function computeDifference(item: InventoryItem): boolean {
   if (item.isOutOfStock) return true;
@@ -20,7 +21,14 @@ export type Action =
   | { type: 'SET_ROLE'; payload: AppState['currentRole'] }
   | { type: 'SET_AREAS'; payload: AppState['areas'] }
   | { type: 'ADD_ITEM'; payload: InventoryItem }
-  | { type: 'DELETE_ITEM'; payload: string };
+  | { type: 'DELETE_ITEM'; payload: string }
+  | { type: 'SET_ARCHIVES'; payload: Archive[] }
+  | { type: 'ADD_ARCHIVE'; payload: Omit<Archive, 'id' | 'createdAt' | 'snapshot'> & { snapshot: Archive['snapshot'] } }
+  | { type: 'DELETE_ARCHIVE'; payload: string }
+  | { type: 'SET_ARCHIVE_FILTER'; payload: Partial<ArchiveFilter> }
+  | { type: 'SET_CURRENT_ARCHIVE_ID'; payload: string | null }
+  | { type: 'SET_ARCHIVE_VIEW'; payload: ArchiveView }
+  | { type: 'RESTORE_FROM_ARCHIVE'; payload: { areas: Area[]; items: InventoryItem[] } };
 
 export function appReducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -150,6 +158,70 @@ export function appReducer(state: AppState, action: Action): AppState {
 
     case 'DELETE_ITEM':
       return { ...state, items: state.items.filter(i => i.id !== action.payload) };
+
+    case 'SET_ARCHIVES':
+      return { ...state, archives: action.payload };
+
+    case 'ADD_ARCHIVE': {
+      const newArchive: Archive = {
+        ...action.payload,
+        id: generateId(),
+        createdAt: Date.now(),
+      };
+      return { ...state, archives: [newArchive, ...state.archives] };
+    }
+
+    case 'DELETE_ARCHIVE':
+      return {
+        ...state,
+        archives: state.archives.filter(a => a.id !== action.payload),
+        currentArchiveId: state.currentArchiveId === action.payload ? null : state.currentArchiveId,
+      };
+
+    case 'SET_ARCHIVE_FILTER':
+      return { ...state, archiveFilter: { ...state.archiveFilter, ...action.payload } };
+
+    case 'SET_CURRENT_ARCHIVE_ID':
+      return { ...state, currentArchiveId: action.payload };
+
+    case 'SET_ARCHIVE_VIEW':
+      return { ...state, archiveView: action.payload };
+
+    case 'RESTORE_FROM_ARCHIVE': {
+      const { areas, items } = action.payload;
+      const newAreas = areas.map(area => ({
+        ...area,
+        id: generateId(),
+        createdAt: Date.now(),
+      }));
+
+      const areaIdMap = new Map<string, string>();
+      areas.forEach((oldArea, index) => {
+        areaIdMap.set(oldArea.id, newAreas[index].id);
+      });
+
+      const newItems = items.map(item => ({
+        id: generateId(),
+        sku: item.sku,
+        name: item.name,
+        areaId: areaIdMap.get(item.areaId) || newAreas[0]?.id || '',
+        expectedQty: item.expectedQty,
+        actualQty: null,
+        note: '',
+        isOutOfStock: false,
+        isConfirmed: false,
+        hasDifference: false,
+        prevQty: null,
+      }));
+
+      return {
+        ...state,
+        areas: newAreas,
+        items: newItems,
+        selectedItemId: newItems[0]?.id || null,
+        history: { past: [], future: [] },
+      };
+    }
 
     default:
       return state;

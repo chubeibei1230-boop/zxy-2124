@@ -68,6 +68,37 @@ export interface FilterCondition {
 
 export type Role = 'manager' | 'operator' | 'reviewer';
 
+export interface ArchiveSnapshot {
+  areas: Area[];
+  items: InventoryItem[];
+  stats: {
+    total: number;
+    counted: number;
+    differences: number;
+    confirmed: number;
+    outOfStock: number;
+  };
+}
+
+export interface Archive {
+  id: string;
+  taskName: string;
+  inventoryDate: string;
+  responsiblePerson: string;
+  handoverNote: string;
+  snapshot: ArchiveSnapshot;
+  createdAt: number;
+  createdBy: Role;
+}
+
+export interface ArchiveFilter {
+  searchText: string;
+  dateFrom: string;
+  dateTo: string;
+}
+
+export type ArchiveView = 'list' | 'detail';
+
 export interface AppState {
   areas: Area[];
   items: InventoryItem[];
@@ -76,4 +107,8 @@ export interface AppState {
   filter: FilterCondition;
   shortcuts: ShortcutConfig;
   history: HistoryState;
+  archives: Archive[];
+  archiveFilter: ArchiveFilter;
+  currentArchiveId: string | null;
+  archiveView: ArchiveView;
 }

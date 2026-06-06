@@ -1,5 +1,5 @@
 import { useReducer, useEffect, useCallback, useMemo } from 'react';
-import type { AppState, HistoryAction, InventoryItem, Area } from '../types';
+import type { AppState, HistoryAction, InventoryItem, Area, Archive, ArchiveSnapshot } from '../types';
 import { appReducer, createHistoryAction } from '../store/reducer';
 import {
   DEFAULT_SHORTCUTS,
@@ -7,6 +7,8 @@ import {
   DEFAULT_HISTORY,
   DEFAULT_ROLE,
   STORAGE_KEYS,
+  DEFAULT_ARCHIVE_FILTER,
+  DEFAULT_ARCHIVE_VIEW,
 } from '../constants/defaultConfig';
 import { loadFromStorage, saveToStorage } from '../utils/storage';
 import { createMockAreas, createMockItems } from '../utils/mockData';
@@ -40,6 +42,10 @@ function initializeState(): AppState {
     filter: loadFromStorage(STORAGE_KEYS.FILTER, DEFAULT_FILTER),
     shortcuts: loadFromStorage(STORAGE_KEYS.SHORTCUTS, DEFAULT_SHORTCUTS),
     history: loadFromStorage(STORAGE_KEYS.HISTORY, DEFAULT_HISTORY),
+    archives: loadFromStorage<Archive[]>(STORAGE_KEYS.ARCHIVES, []),
+    archiveFilter: loadFromStorage(STORAGE_KEYS.ARCHIVE_FILTER, DEFAULT_ARCHIVE_FILTER),
+    currentArchiveId: loadFromStorage<string | null>(STORAGE_KEYS.CURRENT_ARCHIVE_ID, null),
+    archiveView: loadFromStorage(STORAGE_KEYS.ARCHIVE_VIEW, DEFAULT_ARCHIVE_VIEW),
   };
 }
 
@@ -73,6 +79,22 @@ export function useAppState() {
   useEffect(() => {
     saveToStorage(STORAGE_KEYS.HISTORY, state.history);
   }, [state.history]);
+
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.ARCHIVES, state.archives);
+  }, [state.archives]);
+
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.ARCHIVE_FILTER, state.archiveFilter);
+  }, [state.archiveFilter]);
+
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.CURRENT_ARCHIVE_ID, state.currentArchiveId);
+  }, [state.currentArchiveId]);
+
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.ARCHIVE_VIEW, state.archiveView);
+  }, [state.archiveView]);
 
   const pushHistory = useCallback((actions: HistoryAction[]) => {
     const newPast = [...state.history.past, actions];
@@ -215,6 +237,87 @@ export function useAppState() {
     [state.items, state.filter, state.areas]
   );
 
+  const createArchive = useCallback((data: {
+    taskName: string;
+    inventoryDate: string;
+    responsiblePerson: string;
+    handoverNote: string;
+  }) => {
+    const snapshotStats = {
+      total: state.items.length,
+      counted: state.items.filter(i => i.actualQty !== null || i.isOutOfStock).length,
+      differences: state.items.filter(i => i.hasDifference).length,
+      confirmed: state.items.filter(i => i.isConfirmed).length,
+      outOfStock: state.items.filter(i => i.isOutOfStock).length,
+    };
+
+    const snapshot: ArchiveSnapshot = {
+      areas: JSON.parse(JSON.stringify(state.areas)),
+      items: JSON.parse(JSON.stringify(state.items)),
+      stats: snapshotStats,
+    };
+
+    dispatch({
+      type: 'ADD_ARCHIVE',
+      payload: {
+        ...data,
+        snapshot,
+        createdBy: state.currentRole,
+      },
+    });
+  }, [state.items, state.areas, state.currentRole]);
+
+  const deleteArchive = useCallback((archiveId: string) => {
+    dispatch({ type: 'DELETE_ARCHIVE', payload: archiveId });
+  }, []);
+
+  const setArchiveFilter = useCallback((filter: Partial<AppState['archiveFilter']>) => {
+    dispatch({ type: 'SET_ARCHIVE_FILTER', payload: filter });
+  }, []);
+
+  const setCurrentArchiveId = useCallback((archiveId: string | null) => {
+    dispatch({ type: 'SET_CURRENT_ARCHIVE_ID', payload: archiveId });
+  }, []);
+
+  const setArchiveView = useCallback((view: AppState['archiveView']) => {
+    dispatch({ type: 'SET_ARCHIVE_VIEW', payload: view });
+  }, []);
+
+  const restoreFromArchive = useCallback((archive: Archive) => {
+    dispatch({
+      type: 'RESTORE_FROM_ARCHIVE',
+      payload: {
+        areas: archive.snapshot.areas,
+        items: archive.snapshot.items,
+      },
+    });
+  }, []);
+
+  const currentArchive = useMemo(() => {
+    return state.archives.find(a => a.id === state.currentArchiveId) || null;
+  }, [state.archives, state.currentArchiveId]);
+
+  const filteredArchives = useMemo(() => {
+    return state.archives.filter(archive => {
+      if (state.archiveFilter.searchText) {
+        const search = state.archiveFilter.searchText.toLowerCase();
+        if (
+          !archive.taskName.toLowerCase().includes(search) &&
+          !archive.responsiblePerson.toLowerCase().includes(search)
+        ) {
+          return false;
+        }
+      }
+      if (state.archiveFilter.dateFrom) {
+        if (archive.inventoryDate < state.archiveFilter.dateFrom) return false;
+      }
+      if (state.archiveFilter.dateTo) {
+        if (archive.inventoryDate > state.archiveFilter.dateTo) return false;
+      }
+      return true;
+    });
+  }, [state.archives, state.archiveFilter]);
+
   return {
     state,
     dispatch,
@@ -231,6 +334,14 @@ export function useAppState() {
     canRedo,
     stats,
     filteredItems,
+    createArchive,
+    deleteArchive,
+    setArchiveFilter,
+    setCurrentArchiveId,
+    setArchiveView,
+    restoreFromArchive,
+    currentArchive,
+    filteredArchives,
   };
 }
 
