@@ -85,6 +85,7 @@ export interface ReviewStats {
   pending: number;
   inProgress: number;
   completed: number;
+  unclosed: number;
   completionRate: number;
 }
 

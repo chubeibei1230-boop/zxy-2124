@@ -6,8 +6,9 @@ interface CreateArchiveModalProps {
 }
 
 export function CreateArchiveModal({ onClose }: CreateArchiveModalProps) {
-  const { createArchive, stats, getReviewStats } = useApp();
+  const { createArchive, stats, getReviewStats, generateReviewSummary } = useApp();
   const reviewStats = useMemo(() => getReviewStats(), [getReviewStats]);
+  const reviewSummary = useMemo(() => generateReviewSummary(), [generateReviewSummary]);
   const [formData, setFormData] = useState({
     taskName: '',
     inventoryDate: new Date().toISOString().split('T')[0],
@@ -42,9 +43,9 @@ export function CreateArchiveModal({ onClose }: CreateArchiveModalProps) {
           </div>
         )}
 
-        {reviewStats.totalDifferences > 0 && reviewStats.pending > 0 && (
+        {reviewStats.totalDifferences > 0 && reviewStats.unclosed > 0 && (
           <div className="alert alert-warning">
-            ⚠️ 本次盘点共有 {reviewStats.totalDifferences} 项差异，其中 {reviewStats.pending} 项尚未复盘。
+            ⚠️ 本次盘点共有 {reviewStats.totalDifferences} 项差异，其中 {reviewStats.unclosed} 项尚未闭环（{reviewStats.pending} 项待处理，{reviewStats.inProgress} 项复盘中）。
             建议完成所有差异复盘后再进行归档。
           </div>
         )}
@@ -132,7 +133,7 @@ export function CreateArchiveModal({ onClose }: CreateArchiveModalProps) {
                   </div>
                   <div className="preview-stat">
                     <span className="preview-stat-label">未闭环</span>
-                    <span className="preview-stat-value stat-danger">{reviewStats.pending}</span>
+                    <span className="preview-stat-value stat-danger">{reviewStats.unclosed}</span>
                   </div>
                   <div className="preview-stat">
                     <span className="preview-stat-label">已完成</span>
@@ -141,6 +142,12 @@ export function CreateArchiveModal({ onClose }: CreateArchiveModalProps) {
                   <div className="preview-stat">
                     <span className="preview-stat-label">完成率</span>
                     <span className="preview-stat-value">{reviewStats.completionRate}%</span>
+                  </div>
+                </div>
+                <div style={{ marginTop: 16 }}>
+                  <h4 style={{ marginBottom: 8 }}>📄 复盘摘要预览</h4>
+                  <div className="review-summary-content" style={{ maxHeight: '200px', overflow: 'auto' }}>
+                    {reviewSummary}
                   </div>
                 </div>
               </div>

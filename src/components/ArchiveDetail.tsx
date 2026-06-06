@@ -63,14 +63,19 @@ export function ArchiveDetail({ onBack }: ArchiveDetailProps) {
   const reviewStats = useMemo((): ReviewStats | null => {
     if (!archive) return null;
     if (archive.snapshot.reviewStats) {
-      return archive.snapshot.reviewStats;
+      const rs = archive.snapshot.reviewStats;
+      return {
+        ...rs,
+        unclosed: rs.unclosed !== undefined ? rs.unclosed : (rs.pending + rs.inProgress),
+      };
     }
     const items = archive.snapshot.items.filter(i => i.hasDifference || i.isOutOfStock);
     const totalDifferences = items.length;
-    const reviewed = items.filter(i => i.reviewStatus !== 'pending').length;
     const pending = items.filter(i => i.reviewStatus === 'pending').length;
     const inProgress = items.filter(i => i.reviewStatus === 'inProgress').length;
     const completed = items.filter(i => i.reviewStatus === 'completed').length;
+    const unclosed = pending + inProgress;
+    const reviewed = inProgress + completed;
     const completionRate = totalDifferences > 0 ? Math.round((completed / totalDifferences) * 100) : 0;
     return {
       totalDifferences,
@@ -78,6 +83,7 @@ export function ArchiveDetail({ onBack }: ArchiveDetailProps) {
       pending,
       inProgress,
       completed,
+      unclosed,
       completionRate,
     };
   }, [archive]);
@@ -310,7 +316,7 @@ export function ArchiveDetail({ onBack }: ArchiveDetailProps) {
                   <div className="stat-card-large stat-danger">
                     <div className="stat-card-icon">⏳</div>
                     <div className="stat-card-info">
-                      <span className="stat-card-num">{reviewStats.pending}</span>
+                      <span className="stat-card-num">{reviewStats.unclosed}</span>
                       <span className="stat-card-label">未闭环</span>
                     </div>
                   </div>
@@ -522,7 +528,7 @@ export function ArchiveDetail({ onBack }: ArchiveDetailProps) {
                   </div>
                   <div className="exception-stat">
                     <span className="exception-stat-value stat-danger">
-                      {reviewStats.pending}
+                      {reviewStats.unclosed}
                     </span>
                     <span className="exception-stat-label">未闭环</span>
                   </div>

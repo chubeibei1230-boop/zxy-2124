@@ -245,10 +245,11 @@ export function useAppState() {
   const getReviewStats = useCallback(() => {
     const differenceItems = state.items.filter(i => i.hasDifference || i.isOutOfStock);
     const totalDifferences = differenceItems.length;
-    const reviewed = differenceItems.filter(i => i.reviewStatus !== 'pending').length;
     const pending = differenceItems.filter(i => i.reviewStatus === 'pending').length;
     const inProgress = differenceItems.filter(i => i.reviewStatus === 'inProgress').length;
     const completed = differenceItems.filter(i => i.reviewStatus === 'completed').length;
+    const unclosed = pending + inProgress;
+    const reviewed = inProgress + completed;
     const completionRate = totalDifferences > 0 ? Math.round((completed / totalDifferences) * 100) : 0;
 
     return {
@@ -257,6 +258,7 @@ export function useAppState() {
       pending,
       inProgress,
       completed,
+      unclosed,
       completionRate,
     };
   }, [state.items]);

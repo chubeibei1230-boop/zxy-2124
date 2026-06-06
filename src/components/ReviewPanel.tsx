@@ -35,6 +35,7 @@ export function ReviewPanel() {
   const [filterAreaId, setFilterAreaId] = useState<string>('');
   const [filterDiffType, setFilterDiffType] = useState<string>('');
   const [filterReviewStatus, setFilterReviewStatus] = useState<string>('');
+  const [filterConfirmStatus, setFilterConfirmStatus] = useState<string>('');
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({
@@ -61,8 +62,13 @@ export function ReviewPanel() {
     if (filterReviewStatus) {
       items = items.filter(i => i.reviewStatus === filterReviewStatus);
     }
+    if (filterConfirmStatus === 'confirmed') {
+      items = items.filter(i => i.isConfirmed);
+    } else if (filterConfirmStatus === 'unconfirmed') {
+      items = items.filter(i => !i.isConfirmed);
+    }
     return items;
-  }, [exceptionItems, filterAreaId, filterDiffType, filterReviewStatus]);
+  }, [exceptionItems, filterAreaId, filterDiffType, filterReviewStatus, filterConfirmStatus]);
 
   const unconfirmedExceptions = useMemo(() => {
     return exceptionItems.filter(i => !i.isConfirmed);
@@ -89,6 +95,22 @@ export function ReviewPanel() {
 
   const handleSave = () => {
     if (!editingItemId) return;
+    
+    if (editForm.reviewStatus === 'completed') {
+      if (!editForm.reviewConclusion.trim()) {
+        alert('请填写复核结论');
+        return;
+      }
+      if (!editForm.handlingOpinion.trim()) {
+        alert('请填写处理意见');
+        return;
+      }
+      if (!editForm.responsibilityAttribution) {
+        alert('请选择责任归因');
+        return;
+      }
+    }
+    
     setReviewData(editingItemId, editForm);
     setEditingItemId(null);
   };
@@ -214,6 +236,18 @@ export function ReviewPanel() {
             <option value="completed">已完成</option>
           </select>
         </div>
+        <div className="filter-group">
+          <label className="filter-label">确认状态：</label>
+          <select
+            className="form-input"
+            value={filterConfirmStatus}
+            onChange={(e) => setFilterConfirmStatus(e.target.value)}
+          >
+            <option value="">全部</option>
+            <option value="unconfirmed">待确认</option>
+            <option value="confirmed">已确认</option>
+          </select>
+        </div>
         <span className="items-count">共 {filteredItems.length} 条记录</span>
       </div>
 
@@ -314,7 +348,7 @@ export function ReviewPanel() {
                   <div className="review-form">
                     <div className="form-row">
                       <div className="form-group">
-                        <label className="form-label">复盘状态</label>
+                        <label className="form-label">复盘状态 <span style={{ color: 'var(--danger)' }}>*</span></label>
                         <select
                           className="form-input"
                           value={editForm.reviewStatus}
@@ -326,11 +360,17 @@ export function ReviewPanel() {
                         </select>
                       </div>
                       <div className="form-group">
-                        <label className="form-label">责任归因</label>
+                        <label className="form-label">
+                          责任归因
+                          {editForm.reviewStatus === 'completed' && <span style={{ color: 'var(--danger)' }}> *</span>}
+                        </label>
                         <select
                           className="form-input"
                           value={editForm.responsibilityAttribution}
                           onChange={(e) => setEditForm({ ...editForm, responsibilityAttribution: e.target.value as ResponsibilityAttribution })}
+                          style={{
+                            borderColor: editForm.reviewStatus === 'completed' && !editForm.responsibilityAttribution ? 'var(--danger)' : undefined
+                          }}
                         >
                           <option value="">请选择</option>
                           <option value="operator">录入人员</option>
@@ -341,25 +381,42 @@ export function ReviewPanel() {
                       </div>
                     </div>
                     <div className="form-group">
-                      <label className="form-label">复核结论</label>
+                      <label className="form-label">
+                        复核结论
+                        {editForm.reviewStatus === 'completed' && <span style={{ color: 'var(--danger)' }}> *</span>}
+                      </label>
                       <textarea
                         className="form-input"
                         rows={2}
                         placeholder="请输入复核结论，说明差异产生的原因..."
                         value={editForm.reviewConclusion}
                         onChange={(e) => setEditForm({ ...editForm, reviewConclusion: e.target.value })}
+                        style={{
+                          borderColor: editForm.reviewStatus === 'completed' && !editForm.reviewConclusion.trim() ? 'var(--danger)' : undefined
+                        }}
                       />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">处理意见</label>
+                      <label className="form-label">
+                        处理意见
+                        {editForm.reviewStatus === 'completed' && <span style={{ color: 'var(--danger)' }}> *</span>}
+                      </label>
                       <textarea
                         className="form-input"
                         rows={2}
                         placeholder="请输入处理意见，说明后续如何处理该差异..."
                         value={editForm.handlingOpinion}
                         onChange={(e) => setEditForm({ ...editForm, handlingOpinion: e.target.value })}
+                        style={{
+                          borderColor: editForm.reviewStatus === 'completed' && !editForm.handlingOpinion.trim() ? 'var(--danger)' : undefined
+                        }}
                       />
                     </div>
+                    {editForm.reviewStatus === 'completed' && (
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                        <span style={{ color: 'var(--danger)' }}>*</span> 标记为"已完成"时，以上字段必须填写
+                      </div>
+                    )}
                     <div className="form-actions">
                       <button className="btn btn-ghost" onClick={handleCancel}>
                         取消
